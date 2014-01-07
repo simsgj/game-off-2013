@@ -36,7 +36,7 @@ Abyss Call | All | 3 turns | 4 | Creates a hole on a target tile. Rival players 
 Change to Stone | All | 3 turns | 3 | Wizards that stand on such tiles are  immune to spells.
 Change to Clay | All | 2 turns | 2  |All types of spells can be casted upon wizards standing on such tile.
 Teleport | Air | - | 7 | Teleports wizard 3 tiles ahead.
-Blind | Fire | 3 turns | 6 | All wizards skip 3 turns completely.
+Blind | Fire | 3 turns | 6 | All other wizards skip 3 turns completely.
 Path | Earth | 3 turns | 5  | Makes 4 tiles ahead of player Earth tiles. No buffs can be casted.
 Freeze | Water  | 3 turns  | 6  | Wizards standing on water tile or stepping on frozen tile will get stuck for 3 turns. They skip 3 turn completely.
 
