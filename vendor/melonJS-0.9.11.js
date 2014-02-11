@@ -26,7 +26,7 @@ window.me = window.me || {};
 	me = {
 		// library name & version
 		mod : "melonJS",
-		version : "0.9.10"
+		version : "0.9.11"
 	};
 
 	/**
@@ -127,8 +127,8 @@ window.me = window.me || {};
 		 * @public
 		 * @function
 		 * @param {String} first First version string to compare
-		 * @param {String} [second="0.9.10"] Second version string to compare 
-		 * @return {Integer} comparison result <br>&lt; 0 : first &lt; second <br>0 : first == second <br>&gt; 0 : first &gt; second
+		 * @param {String} [second="0.9.11"] Second version string to compare 
+		 * @return {Number} comparison result <br>&lt; 0 : first &lt; second <br>0 : first == second <br>&gt; 0 : first &gt; second
 		 * @example
 		 * if (me.sys.checkVersion("0.9.5") > 0) {
 		 *     console.error("melonJS is too old. Expected: 0.9.5, Got: " + me.version);
@@ -212,19 +212,25 @@ window.me = window.me || {};
 	}
 
 	/**
+	 * The built in window Object
+	 * @external window
+	 * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/Window.window}
+	 */
+    
+	/**
 	 * Specify a function to execute when the DOM is fully loaded
+     * @memberOf external:window#
+     * @alias onReady
 	 * @param {Function} handler A function to execute after the DOM is ready.
 	 * @example
 	 * // small main skeleton
-	 * var jsApp	=
-	 * {
-	 *    // Initialize the jsApp
+	 * var game	= {
+	 *    // Initialize the game
 	 *    // called by the window.onReady function
-	 *    onload: function()
-	 *    {
+	 *    onload: function() {
+	 *
 	 *       // init video
-	 *       if (!me.video.init('jsapp', 640, 480))
-	 *       {
+	 *       if (!me.video.init('screen', 640, 480, true)) {
 	 *          alert("Sorry but your browser does not support html 5 canvas. ");
 	 *          return;
 	 *       }
@@ -236,27 +242,25 @@ window.me = window.me || {};
 	 *       me.loader.onload = this.loaded.bind(this);
 	 *
 	 *       // set all ressources to be loaded
-	 *       me.loader.preload(g_ressources);
+	 *       me.loader.preload(game.resources);
 	 *
 	 *       // load everything & display a loading screen
 	 *       me.state.change(me.state.LOADING);
 	 *    },
 	 *
 	 *    // callback when everything is loaded
-	 *    loaded: function ()
-	 *    {
+	 *    loaded: function () {
 	 *       // define stuff
 	 *       // ....
 	 *
 	 *       // change to the menu screen
 	 *       me.state.change(me.state.MENU);
 	 *    }
-	 * }; // jsApp
+	 * }; // game
 	 *
 	 * // "bootstrap"
-	 * window.onReady(function()
-	 * {
-	 *    jsApp.onload();
+	 * window.onReady(function() {
+	 *    game.onload();
 	 * });
 	 */
 	$.onReady = function(fn) {
@@ -289,6 +293,45 @@ window.me = window.me || {};
 
 	var initializing = false, fnTest = /var xyz/.test(function() {/**@nosideeffects*/var xyz;}) ? /\bparent\b/ : /[\D|\d]*/;
 
+    /**
+     * a deep copy function
+     * @ignore
+     */
+    var deepcopy = function (obj) {
+     
+        if (null == obj || "object" !== typeof obj) {
+            return obj;
+        }
+        
+        // hold the copied object
+        var copy;
+        
+        // Array copy
+        if( obj instanceof Array ) {
+            copy = [];
+            Object.setPrototypeOf(copy, Object.getPrototypeOf(obj));
+            for( var i = 0, l = obj.length; i < l; i++) {
+                copy[i] = deepcopy(obj[i]);
+            }
+            return copy;
+        }
+        
+        // Date copy
+        if (obj instanceof Date) {
+            copy = new Date();
+            copy.setTime(obj.getTime());
+            return copy;
+        }
+            
+        // else instanceof Object
+        copy = {};
+        Object.setPrototypeOf(copy, Object.getPrototypeOf(obj));
+        for( var prop in obj ) {
+            if (obj.hasOwnProperty(prop)) copy[prop] = deepcopy(obj[prop]);
+        }
+        return copy;
+    };
+    
 	/**
 	 * JavaScript Inheritance Helper <br>
 	 * Based on <a href="http://ejohn.org/">John Resig</a> Simple Inheritance<br>
@@ -348,35 +391,45 @@ window.me = window.me || {};
 		var proto = new this();
 		initializing = false;
 
+		function addSuper(name, fn) {
+			return function() {
+				var tmp = this.parent;
+
+				// Add a new ._super() method that is the same method
+				// but on the super-class
+				this.parent = parent[name];
+
+				// The method only need to be bound temporarily, so we
+				// remove it when we're done executing
+				var ret = fn.apply(this, arguments);
+				this.parent = tmp;
+
+				return ret;
+			};
+		}
+
 		// Copy the properties over onto the new prototype
 		for ( var name in prop) {
 			// Check if we're overwriting an existing function
 			proto[name] = typeof prop[name] === "function" &&
 						  typeof parent[name] === "function" &&
-						  fnTest.test(prop[name]) ? (function(name, fn) {
-				return function() {
-					var tmp = this.parent;
-
-					// Add a new ._super() method that is the same method
-					// but on the super-class
-					this.parent = parent[name];
-
-					// The method only need to be bound temporarily, so we
-					// remove it when we're done executing
-					var ret = fn.apply(this, arguments);
-					this.parent = tmp;
-
-					return ret;
-				};
-			})(name, prop[name]) : prop[name];
+						  fnTest.test(prop[name]) ? addSuper(name, prop[name]) : prop[name];
 		}
 
 		// The dummy class constructor
 		function Class() {
-			if (!initializing && this.init) {
-				this.init.apply(this, arguments);
+			if (!initializing) {
+				for( var prop in this ) {
+					// deepcopy properties if required
+					if( typeof(this[prop]) === 'object' ) {
+						this[prop] = deepcopy(this[prop]);
+					}
+				}
+				if (this.init) {
+					this.init.apply(this, arguments);
+				}
 			}
-			//return this;
+			return this;
 		}
 		// Populate our constructed prototype object
 		Class.prototype = proto;
@@ -417,7 +470,7 @@ window.me = window.me || {};
 	
 	if (!Function.prototype.bind) {
 		/** @ignore */
-		function Empty() {}
+		var Empty = function () {};
 		
 		/**
 		 * Binds this function to the given context by wrapping it in another function and returning the wrapper.<p>
@@ -522,7 +575,7 @@ window.me = window.me || {};
 	 * @memberof! external:Function#
 	 * @alias defer
 	 * @param {} [arguments...] Optional additional arguments to curry for the function.
-	 * @return {Int} id that can be used to clear the deferred function using clearTimeout
+	 * @return {Number} id that can be used to clear the deferred function using clearTimeout
 	 * @example
 	 * // execute myFunc() when the stack is empty, with 'myArgument' as parameter
 	 * myFunc.defer('myArgument');
@@ -558,6 +611,30 @@ window.me = window.me || {};
 		};
 	}
 
+    /**
+     * Get the prototype of an Object.
+     * @memberOf external:Object#
+     * @alias getPrototypeOf
+     * @param {Object} obj Target object to inspect.
+     * @return {Prototype} Prototype of the target object.
+     */
+    Object.getPrototypeOf = Object.getPrototypeOf || function (obj) {
+        return obj.__proto__;
+    };
+
+    /**
+     * Set the prototype of an Object.
+     * @memberOf external:Object#
+     * @alias setPrototypeOf
+     * @param {Object} obj Target object to modify.
+     * @param {Prototype} prototype New prototype for the target object.
+     * @return {Object} Modified target object.
+     */
+    Object.setPrototypeOf = Object.setPrototypeOf || function (obj, prototype) {
+        obj.__proto__ = prototype;
+        return obj;
+    };
+
 	/**
 	 * The built in String Object
 	 * @external String
@@ -573,6 +650,18 @@ window.me = window.me || {};
 		 */
 		String.prototype.trim = function () {  
 			return (this.replace(/^\s+/, '')).replace(/\s+$/, ''); 
+		};  
+	}
+    
+	if(!String.prototype.trimRight) {  
+		/**
+		 * returns the string stripped of whitespace from the right end of the string.
+		 * @memberof! external:String#
+		 * @alias trimRight
+		 * @return {String} trimmed string
+		 */
+		String.prototype.trimRight = function () {  
+			return this.replace(/\s+$/, '');
 		};  
 	}
 	
@@ -960,8 +1049,8 @@ window.me = window.me || {};
 		 * @private
 		 * @ignore
 		 * @function
-		 * @param {int} [width="full size of the created canvas"] width of the canvas
-		 * @param {int} [height="full size of the created canvas"] width of the canvas
+		 * @param {Number} [width="full size of the created canvas"] width of the canvas
+		 * @param {Number} [height="full size of the created canvas"] width of the canvas
 		 * init function.
 		 */
 		api.init = function(width, height) {
@@ -1077,7 +1166,7 @@ window.me = window.me || {};
 					targetContainer.name = group.name;
 					targetContainer.visible = group.visible;
 					targetContainer.z = group.z;
-  					targetContainer.setOpacity(group.opacity);                  
+					targetContainer.setOpacity(group.opacity);                  
                  
 
 					// disable auto-sort
@@ -1099,9 +1188,6 @@ window.me = window.me || {};
 						
 						// set the entity z order correspondingly to its parent container/group
 						entity.z = group.z;
-
-						//set the object visible state based on the group visible state
-						entity.visible = (group.visible === true);
 
 						//apply group opacity value to the child objects if group are merged
 						if (api.mergeGroup === true && entity.isRenderable === true) {
@@ -1157,7 +1243,7 @@ window.me = window.me || {};
 		 * @name add
 		 * @memberOf me.game
 		 * @param {me.ObjectEntity} obj Object to be added
-		 * @param {int} [z="obj.z"] z index
+		 * @param {Number} [z="obj.z"] z index
 		 * @public
 		 * @function
 		 * @example
@@ -1486,7 +1572,7 @@ window.me = window.me || {};
 			me.audio.detectCapabilities();
 
 			// future proofing (MS) feature detection
-			navigator.pointerEnabled = navigator.pointerEnabled || navigator.msPointerEnabled;
+			me.device.pointerEnabled = navigator.pointerEnabled || navigator.msPointerEnabled;
 			navigator.maxTouchPoints = navigator.maxTouchPoints || navigator.msMaxTouchPoints || 0;
 			window.gesture = window.gesture || window.MSGesture;
 
@@ -1495,7 +1581,7 @@ window.me = window.me || {};
 							  (navigator.isCocoonJS) || (navigator.maxTouchPoints > 0);
 
 			// detect platform
-			me.device.isMobile = me.device.ua.match(/Android|iPhone|iPad|iPod|BlackBerry|Windows Phone|Mobi/i);
+			me.device.isMobile = me.device.ua.match(/Android|iPhone|iPad|iPod|BlackBerry|Windows Phone|Mobi/i) || false;
 
 			// accelerometer detection
 			me.device.hasAccelerometer = (
@@ -1510,7 +1596,7 @@ window.me = window.me || {};
 			}
 
 			try {
-				obj.localStorage = (typeof window.localStorage !== 'undefined');
+				obj.localStorage = !!window.localStorage;
 			} catch (e) {
 				// the above generates an exception when cookies are blocked
 				obj.localStorage = false;
@@ -1742,7 +1828,7 @@ window.me = window.me || {};
 		 * @memberOf me.device
 		 * @public
 		 * @function
-		 * @return {boolean} false if not supported by the device
+		 * @return {Boolean} false if not supported by the device
 		 */
 		obj.watchAccelerometer = function () {
 			if (me.device.hasAccelerometer) {
@@ -1797,7 +1883,7 @@ window.me = window.me || {};
 		 * @memberOf me.device
 		 * @public
 		 * @function
-		 * @return {boolean} false if not supported by the device
+		 * @return {Boolean} false if not supported by the device
 		 */
 		obj.watchDeviceOrientation = function() {
 			if(me.device.hasDeviceOrientation && !deviceOrientationInitialized) {
@@ -1977,8 +2063,8 @@ window.me = window.me || {};
 	 * @extends Object
 	 * @memberOf me
 	 * @constructor
-	 * @param {int} [x=0] x value of the vector
-	 * @param {int} [y=0] y value of the vector
+	 * @param {Number} [x=0] x value of the vector
+	 * @param {Number} [y=0] y value of the vector
 	 */
 	me.Vector2d = Object.extend(
 	/** @scope me.Vector2d.prototype */
@@ -2302,7 +2388,7 @@ window.me = window.me || {};
 		},
 
 		/**
-		 * return the doc product of this vector and the passed one
+		 * return the dot product of this vector and the passed one
 		 * @name dotProduct
 		 * @memberOf me.Vector2d
 		 * @function
@@ -2384,8 +2470,8 @@ window.me = window.me || {};
 	 * @memberOf me
 	 * @constructor
 	 * @param {me.Vector2d} v x,y position of the rectange
-	 * @param {int} w width of the rectangle
-	 * @param {int} h height of the rectangle
+	 * @param {Number} w width of the rectangle
+	 * @param {Number} h height of the rectangle
 	 */
 	me.Rect = Object.extend(
 	/** @scope me.Rect.prototype */	{
@@ -2546,8 +2632,8 @@ window.me = window.me || {};
 		 * @memberOf me.Rect
 		 * @function
 		 * @param {me.Vector2d} v x,y position for the rectangle
-		 * @param {int} w width of the rectangle
-		 * @param {int} h height of the rectangle	 
+		 * @param {Number} w width of the rectangle
+		 * @param {Number} h height of the rectangle
 		 */
 		set : function(v, w, h) {
 			this.pos.setV(v);
@@ -2626,6 +2712,10 @@ window.me = window.me || {};
 
 			this.width  = Math.ceil( Math.max(this.pos.x + this.width,  r.pos.x + r.width)  - x1 );
 			this.height = Math.ceil( Math.max(this.pos.y + this.height, r.pos.y + r.height) - y1 );
+			
+			this.hWidth = ~~(this.width / 2);
+			this.hHeight = ~~(this.height / 2);
+			
 			this.pos.x  = ~~x1;
 			this.pos.y  = ~~y1;
 
@@ -2639,10 +2729,10 @@ window.me = window.me || {};
 		 * @name adjustSize
 		 * @memberOf me.Rect
 		 * @function
-		 * @param {int} x x offset (specify -1 to not change the width)
-		 * @param {int} w width of the hit box
-		 * @param {int} y y offset (specify -1 to not change the height)
-		 * @param {int} h height of the hit box
+		 * @param {Number} x x offset (specify -1 to not change the width)
+		 * @param {Number} w width of the hit box
+		 * @param {Number} y y offset (specify -1 to not change the height)
+		 * @param {Number} h height of the hit box
 		 */
 		adjustSize : function(x, w, y, h) {
 			if (x !== -1) {
@@ -2740,7 +2830,7 @@ window.me = window.me || {};
 		 * @memberOf me.Rect
 		 * @function
 		 * @param  {me.Rect} rect
-		 * @return {boolean} true if overlaps
+		 * @return {Boolean} true if overlaps
 		 */
 		overlaps : function(r)	{
 			return (this.left < r.right && 
@@ -2755,7 +2845,7 @@ window.me = window.me || {};
 		 * @memberOf me.Rect
 		 * @function
 		 * @param  {me.Rect} rect
-		 * @return {boolean} true if within
+		 * @return {Boolean} true if within
 		 */
 		within: function(r) {
 			return (r.left <= this.left && 
@@ -2770,7 +2860,7 @@ window.me = window.me || {};
 		 * @memberOf me.Rect
 		 * @function
 		 * @param  {me.Rect} rect
-		 * @return {boolean} true if contains
+		 * @return {Boolean} true if contains
 		 */
 		contains: function(r) {
 			return (r.left >= this.left && 
@@ -2785,7 +2875,7 @@ window.me = window.me || {};
 		 * @memberOf me.Rect
 		 * @function
 		 * @param  {me.Vector2d} point
-		 * @return {boolean} true if contains
+		 * @return {Boolean} true if contains
 		 */
 		containsPointV: function(v) {
 			return this.containsPoint(v.x, v.y);
@@ -2798,7 +2888,7 @@ window.me = window.me || {};
 		 * @function
 		 * @param  {Number} x x coordinate
 		 * @param  {Number} y y coordinate
-		 * @return {boolean} true if contains
+		 * @return {Boolean} true if contains
 		 */
 		containsPoint: function(x, y) {
 			return  (x >= this.left && x <= this.right && 
@@ -2884,8 +2974,8 @@ window.me = window.me || {};
 	 * @memberOf me
 	 * @constructor
 	 * @param {me.Vector2d} v top-left origin position of the Ellipse
-	 * @param {int} w width of the elipse
-	 * @param {int} h height of the elipse
+	 * @param {Number} w width of the elipse
+	 * @param {Number} h height of the elipse
 	 */
 	me.Ellipse = Object.extend(
 	/** @scope me.Ellipse.prototype */	{
@@ -2930,8 +3020,8 @@ window.me = window.me || {};
 		 * @memberOf me.Ellipse
 		 * @function
 		 * @param {me.Vector2d} v top-left origin position of the Ellipse
-		 * @param {int} w width of the Ellipse
-		 * @param {int} h height of the Ellipse	 
+		 * @param {Number} w width of the Ellipse
+		 * @param {Number} h height of the Ellipse
 		 */
 		set : function(v, w, h) {
 			this.radius.set(w/2, h/2);
@@ -2999,7 +3089,7 @@ window.me = window.me || {};
 	 * @constructor
 	 * @param {me.Vector2d} v origin point of the PolyShape
 	 * @param {me.Vector2d[]} points array of vector defining the polyshape
-	 * @param {boolean} closed true if a polygone, false if a polyline	 
+	 * @param {Boolean} closed true if a polygone, false if a polyline
 	 */
 	me.PolyShape = Object.extend(
 	/** @scope me.PolyShape.prototype */	{
@@ -3061,7 +3151,7 @@ window.me = window.me || {};
 		 * @function
 		 * @param {me.Vector2d} v origin point of the PolyShape
 		 * @param {me.Vector2d[]} points array of vector defining the polyshape
-		 * @param {boolean} closed true if a polygone, false if a polyline	 
+		 * @param {Boolean} closed true if a polygone, false if a polyline
 		 */
 		set : function(v, points, closed) {
 			this.pos.setV(v);
@@ -3176,8 +3266,8 @@ window.me = window.me || {};
 	 * @memberOf me
 	 * @constructor
 	 * @param {me.Vector2d} pos position of the renderable object
-	 * @param {int} width object width
-	 * @param {int} height object height
+	 * @param {Number} width object width
+	 * @param {Number} height object height
 	 */
 	me.Renderable = me.Rect.extend(
 	/** @scope me.Renderable.prototype */
@@ -3187,6 +3277,17 @@ window.me = window.me || {};
 		 * @ignore
 		 */
 		isRenderable : true,
+        
+       /**
+		* (G)ame (U)nique (Id)entifier" <br>
+		* a GUID will be allocated for any renderable object added <br>
+		* to an object container (including the `me.game.world` container)
+		* @public
+		* @type String
+		* @name GUID
+		* @memberOf me.Renderable
+		*/
+		GUID : undefined,
 		
 		/**
 		 * the visible state of the renderable object<br>
@@ -3317,7 +3418,7 @@ window.me = window.me || {};
 		 * @name setOpacity
 		 * @memberOf me.Renderable
 		 * @function
-		 * @param {alpha} alpha opacity value between 0 and 1
+		 * @param {Number} alpha opacity value between 0 and 1
 		 */
 		setOpacity : function(alpha) {
 			if (typeof (alpha) === "number") {
@@ -3374,11 +3475,11 @@ window.me = window.me || {};
 	 * @extends me.Renderable
 	 * @memberOf me
 	 * @constructor
-	 * @param {int} x the x coordinates of the sprite object
-	 * @param {int} y the y coordinates of the sprite object
+	 * @param {Number} x the x coordinates of the sprite object
+	 * @param {Number} y the y coordinates of the sprite object
 	 * @param {Image} image reference to the Sprite Image. See {@link me.loader#getImage}
-	 * @param {int} [spritewidth] sprite width
-	 * @param {int} [spriteheigth] sprite height
+	 * @param {Number} [spritewidth] sprite width
+	 * @param {Number} [spriteheigth] sprite height
 	 * @example
 	 * // create a static Sprite Object
 	 * mySprite = new me.SpriteObject (100, 100, me.loader.getImage("mySpriteImage"));
@@ -3496,7 +3597,7 @@ window.me = window.me || {};
 		 * @name flicker
 		 * @memberOf me.SpriteObject
 		 * @function
-		 * @param {Int} duration expressed in frames
+		 * @param {Number} duration expressed in frames
 		 * @param {Function} callback Function to call when flickering ends
 		 * @example
 		 * // make the object flicker for 60 frame
@@ -3692,11 +3793,11 @@ window.me = window.me || {};
 	 * @extends me.SpriteObject
 	 * @memberOf me
 	 * @constructor
-	 * @param {int} x the x coordinates of the sprite object
-	 * @param {int} y the y coordinates of the sprite object
+	 * @param {Number} x the x coordinates of the sprite object
+	 * @param {Number} y the y coordinates of the sprite object
 	 * @param {Image} image reference of the animation sheet
-	 * @param {int} spritewidth width of a single sprite within the spritesheet
-	 * @param {int} [spriteheight=image.height] height of a single sprite within the spritesheet
+	 * @param {Number} spritewidth width of a single sprite within the spritesheet
+	 * @param {Number} [spriteheight=image.height] height of a single sprite within the spritesheet
 	 */
 	me.AnimationSheet = me.SpriteObject.extend(
 	/** @scope me.AnimationSheet.prototype */
@@ -3788,6 +3889,8 @@ window.me = window.me || {};
 						),
 						width: this.width,
 						height: this.height,
+						hWidth: this.width / 2,
+						hHeight: this.height / 2,
 						angle: 0
 					};
 				}
@@ -3796,24 +3899,24 @@ window.me = window.me || {};
 
 		/**
 		 * add an animation <br>
-		 * For fixed-sized cell spritesheet, the index list must follow the logic as per the following example :<br>
+		 * For fixed-sized cell sprite sheet, the index list must follow the logic as per the following example :<br>
 		 * <img src="images/spritesheet_grid.png"/>
 		 * @name addAnimation
 		 * @memberOf me.AnimationSheet
 		 * @function
 		 * @param {String} name animation id
-		 * @param {Int[]|String[]} index list of sprite index or name defining the animaton
-		 * @param {Int} [animationspeed] cycling speed for animation in ms (delay between each frame).
+		 * @param {Number[]|String[]} index list of sprite index or name defining the animation
+		 * @param {Number} [animationspeed] cycling speed for animation in ms (delay between each frame).
 		 * @see me.AnimationSheet#animationspeed
 		 * @example
-		 * // walking animatin
-		 * this.addAnimation ("walk", [0,1,2,3,4,5]);
-		 * // eating animatin
-		 * this.addAnimation ("eat", [6,6]);
-		 * // rolling animatin
-		 * this.addAnimation ("roll", [7,8,9,10]);
+		 * // walking animation
+		 * this.addAnimation("walk", [ 0, 1, 2, 3, 4, 5 ]);
+		 * // eating animation
+		 * this.addAnimation("eat", [ 6, 6 ]);
+		 * // rolling animation
+		 * this.addAnimation("roll", [ 7, 8, 9, 10 ]);
 		 * // slower animation
-		 * this.addAnimation ("roll", [7,8,9,10], 200);
+		 * this.addAnimation("roll", [ 7, 8, 9, 10 ], 200);
 		 */
 		addAnimation : function(name, index, animationspeed) {
 			this.anim[name] = {
@@ -3901,9 +4004,8 @@ window.me = window.me || {};
 		 * @param {String} name animation id
 		 * @return {Boolean}
 		 * @example
-		 * if (!this.isCurrentAnimation("walk"))
-		 * {
-		 *    // do something horny...
+		 * if (!this.isCurrentAnimation("walk")) {
+		 *    // do something funny...
 		 * }
 		 */
 		isCurrentAnimation : function(name) {
@@ -3915,7 +4017,7 @@ window.me = window.me || {};
 		 * @name setAnimationFrame
 		 * @memberOf me.AnimationSheet
 		 * @function
-		 * @param {int} [index=0] animation frame index
+		 * @param {Number} [index=0] animation frame index
 		 * @example
 		 * //reset the current animation to the first frame
 		 * this.setAnimationFrame();
@@ -3926,6 +4028,8 @@ window.me = window.me || {};
 			this.offset = frame.offset;
 			this.width = frame.width;
 			this.height = frame.height;
+			this.hWidth = frame.hWidth;
+			this.hHeight = frame.hHeight;
 			this._sourceAngle = frame.angle;
 		},
 		
@@ -3934,7 +4038,7 @@ window.me = window.me || {};
 		 * @name getCurrentAnimationFrame
 		 * @memberOf me.AnimationSheet
 		 * @function
-		 * @return {int} current animation frame index
+		 * @return {Number} current animation frame index
 		 */
 		getCurrentAnimationFrame : function() {
 			return this.current.idx;
@@ -4131,6 +4235,8 @@ window.me = window.me || {};
 					offset: region.frame.pos.clone(),
 					width: region.frame.width,
 					height: region.frame.height,
+					hWidth: region.frame.width / 2,
+					hHeight: region.frame.height / 2,
 					angle : (region.rotated===true) ? nhPI : 0
 				};
 			}
@@ -4426,12 +4532,12 @@ window.me = window.me || {};
 		},
 
 		/**
-		 * set the viewport bound (real world limit)
+		 * set the viewport boundaries (world limit)
 		 * @name setBounds
 		 * @memberOf me.Viewport
 		 * @function
-		 * @param {Number} w real world width
-		 * @param {Number} h real world height
+		 * @param {Number} w world width
+		 * @param {Number} h world height
 		 */
 		setBounds : function(w, h) {
 			this.limits.set(w, h);
@@ -4554,7 +4660,7 @@ window.me = window.me || {};
 		 * @param {Number} intensity maximum offset that the screen can be moved while shaking
 		 * @param {Number} duration expressed in milliseconds
 		 * @param {me.Viewport#AXIS} [axis=AXIS.BOTH] specify on which axis you want the shake effect (AXIS.HORIZONTAL, AXIS.VERTICAL, AXIS.BOTH)
-		 * @param {function} [onComplete] callback once shaking effect is over
+		 * @param {Function} [onComplete] callback once shaking effect is over
 		 * @example
 		 * // shake it baby !
 		 * me.game.viewport.shake(10, 500, me.game.viewport.AXIS.BOTH);
@@ -4576,7 +4682,7 @@ window.me = window.me || {};
 
 		/**
 		 * fadeOut(flash) effect<p>
-		 * screen is filled with the specified color and slowy goes back to normal
+		 * screen is filled with the specified color and slowly goes back to normal
 		 * @name fadeOut
 		 * @memberOf me.Viewport
 		 * @function
@@ -4588,7 +4694,7 @@ window.me = window.me || {};
 			this._fadeOut.color = color;
 			this._fadeOut.duration = duration || 1000; // convert to ms
 			this._fadeOut.alpha = 1.0;
-			this._fadeOut.tween = new me.Tween(this._fadeOut).to({alpha: 0.0}, this._fadeOut.duration ).onComplete(onComplete||null);
+			this._fadeOut.tween = me.entityPool.newInstanceOf("me.Tween", this._fadeOut).to({alpha: 0.0}, this._fadeOut.duration ).onComplete(onComplete||null);
 			this._fadeOut.tween.start();
 		},
 
@@ -4606,7 +4712,7 @@ window.me = window.me || {};
 			this._fadeIn.color = color;
 			this._fadeIn.duration = duration || 1000; //convert to ms
 			this._fadeIn.alpha = 0.0;
-			this._fadeIn.tween = new me.Tween(this._fadeIn).to({alpha: 1.0}, this._fadeIn.duration ).onComplete(onComplete||null);
+			this._fadeIn.tween = me.entityPool.newInstanceOf("me.Tween", this._fadeIn).to({alpha: 1.0}, this._fadeIn.duration ).onComplete(onComplete||null);
 			this._fadeIn.tween.start();
 		},
 
@@ -4965,10 +5071,22 @@ window.me = window.me || {};
 		addChild : function(child) {
 			if(typeof(child.ancestor) !== 'undefined') {
 				child.ancestor.removeChild(child);
+			} else {
+				// only allocate a GUID if the object has no previous ancestor 
+				// (e.g. move one child from one container to another)
+				if (child.isRenderable) {
+					// allocated a GUID value
+					child.GUID = me.utils.createGUID();
+				}
+            }
+
+            // specify a z property to infinity if not defined
+			if (typeof child.z === 'undefined') {
+				child.z = Infinity;
 			}
 
 			child.ancestor = this;
-			
+            
 			this.children.push(child);
 			
 			if (this.autoSort === true) {
@@ -4983,12 +5101,20 @@ window.me = window.me || {};
 		 * @memberOf me.ObjectContainer
 		 * @function
 		 * @param {me.Renderable} child
+		 * @param {Number} index
 		 */
 		addChildAt : function(child, index) {
 			if((index >= 0) && (index < this.children.length)) {
 				
 				if(typeof(child.ancestor) !== 'undefined') {
 					child.ancestor.removeChild(child);
+				} else {
+					// only allocate a GUID if the object has no previous ancestor 
+					// (e.g. move one child from one container to another)
+					if (child.isRenderable) {
+						// allocated a GUID value
+						child.GUID = me.utils.createGUID();
+					}
 				}
 				
 				child.ancestor = this;
@@ -5086,17 +5212,23 @@ window.me = window.me || {};
 			var objList = [];	
 			// for string comparaisons
 			var _regExp = new RegExp(value, "i");
-			for (var i = this.children.length, obj; i--, obj = this.children[i];) {
-				if (obj instanceof me.ObjectContainer) {
-					objList = objList.concat(obj.getEntityByProp(prop, value));
-				} else if (obj.isEntity) {
-					if (typeof (obj[prop]) === 'string') {
-						if (obj[prop].match(_regExp)) {
-							objList.push(obj);
-						}
-					} else if (obj[prop] === value) {
+
+			function compare(obj, prop) {
+				if (typeof (obj[prop]) === 'string') {
+					if (obj[prop].match(_regExp)) {
 						objList.push(obj);
 					}
+				} else if (obj[prop] === value) {
+					objList.push(obj);
+				}
+			}
+
+			for (var i = this.children.length, obj; i--, obj = this.children[i];) {
+				if (obj instanceof me.ObjectContainer) {
+					compare(obj, prop);
+					objList = objList.concat(obj.getEntityByProp(prop, value));
+				} else if (obj.isEntity) {
+					compare(obj, prop);
 				}
 			}
 			return objList;
@@ -5217,7 +5349,7 @@ window.me = window.me || {};
 		
 		/**
 		 * Checks if the specified entity collides with others entities in this container
-		 * @name collideType
+		 * @name collide
 		 * @memberOf me.ObjectContainer
 		 * @public
 		 * @function
@@ -5383,37 +5515,45 @@ window.me = window.me || {};
 					// skip this object
 					continue;
 				}
+                
+                if ( obj.isRenderable ) {
 
-				if (obj.floating) {
-					globalFloatingCounter++;
-				}
-				isFloating = (globalFloatingCounter > 0);
+                    isFloating = (globalFloatingCounter > 0 || obj.floating);
+                    if (isFloating) {
+                        globalFloatingCounter++;
+                    }
 
-				// Translate global context
-				isTranslated = (obj.visible && !isFloating);
-				if (isTranslated) {
-					x = obj.pos.x;
-					y = obj.pos.y;
-					globalTranslation.translateV(obj.pos);
-					globalTranslation.set(globalTranslation.pos, obj.width, obj.height);
-				}
+                    // Translate global context
+                    isTranslated = (obj.visible && !isFloating);
+                    if (isTranslated) {
+                        x = obj.pos.x;
+                        y = obj.pos.y;
+                        globalTranslation.translateV(obj.pos);
+                        globalTranslation.set(globalTranslation.pos, obj.width, obj.height);
+                    }
 
-				// check if object is visible
-				obj.inViewport = obj.visible && (
-					isFloating || (obj.getBounds && viewport.isVisible(globalTranslation))
-				);
+                    // check if object is visible
+                    obj.inViewport = obj.visible && (
+                        isFloating || viewport.isVisible(globalTranslation)
+                    );
 
-				// update our object
-				isDirty |= (obj.inViewport || obj.alwaysUpdate) && obj.update();
+                    // update our object
+                    isDirty |= (obj.inViewport || obj.alwaysUpdate) && obj.update();
 
-				// Undo global context translation
-				if (isTranslated) {
-					globalTranslation.translate(-x, -y);
-				}
+                    // Undo global context translation
+                    if (isTranslated) {
+                        globalTranslation.translate(-x, -y);
+                    }
 
-				if (globalFloatingCounter > 0) {
-					globalFloatingCounter--;
-				}
+                    if (globalFloatingCounter > 0) {
+                        globalFloatingCounter--;
+                    }
+                    
+                } else {
+                
+                    // just directly call update() for non renderable object
+                    isDirty |= obj.update();
+                }
 			}
 
 			return isDirty;
@@ -5439,7 +5579,7 @@ window.me = window.me || {};
 
 			for ( var i = this.children.length, obj; i--, obj = this.children[i];) {
 				isFloating = obj.floating;
-				if ((obj.inViewport || isFloating) && obj.isRenderable) {
+				if (obj.isRenderable && (obj.inViewport || (isFloating && obj.visible))) {
 
 					if (isFloating === true) {
 						context.save();
@@ -5614,6 +5754,7 @@ window.me = window.me || {};
 			obj.add("me.ObjectEntity", me.ObjectEntity);
 			obj.add("me.CollectableEntity", me.CollectableEntity);
 			obj.add("me.LevelEntity", me.LevelEntity);
+			obj.add("me.Tween", me.Tween, true);
 		};
 
 		/**
@@ -5682,22 +5823,30 @@ window.me = window.me || {};
 
 		obj.newInstanceOf = function(data) {
 			var name = typeof data === 'string' ? data.toLowerCase() : undefined;
+			var args = Array.prototype.slice.call(arguments);
 			if (name && entityClass[name]) {
 				var proto;
 				if (!entityClass[name]['pool']) {
 					proto = entityClass[name]["class"];
-					arguments[0] = proto;
-					return new (proto.bind.apply(proto, arguments))();
+					args[0] = proto;
+					return new (proto.bind.apply(proto, args))();
 				}
 				
 				var obj, entity = entityClass[name];
 				proto = entity["class"];
 				if (entity["pool"].length > 0) {
 					obj = entity["pool"].pop();
-					obj.init.apply(obj, Array.prototype.slice.call(arguments, 1));
+                    // call the object init function if defined (JR's Inheritance)
+					if (typeof obj.init === "function") {
+						obj.init.apply(obj, args.slice(1));
+					}
+					// call the object onResetEvent function if defined
+					if (typeof obj.onResetEvent === "function") {
+						obj.onResetEvent.apply(obj, args.slice(1));
+					}
 				} else {
-					arguments[0] = proto;
-					obj = new (proto.bind.apply(proto, arguments))();
+					args[0] = proto;
+					obj = new (proto.bind.apply(proto, args))();
 					obj.className = name;
 				}
 
@@ -5787,22 +5936,13 @@ window.me = window.me || {};
 	 * @extends me.Renderable
 	 * @memberOf me
 	 * @constructor
-	 * @param {int} x the x coordinates of the sprite object
-	 * @param {int} y the y coordinates of the sprite object
+	 * @param {Number} x the x coordinates of the sprite object
+	 * @param {Number} y the y coordinates of the sprite object
 	 * @param {me.ObjectSettings} settings Object Properties as defined in Tiled <br> <img src="images/object_properties.png"/>
 	 */
 	me.ObjectEntity = me.Renderable.extend(
 	/** @scope me.ObjectEntity.prototype */ {
 	
-	   /**
-		* Entity "Game Unique Identifier"<br>
-		* @public
-		* @type String
-		* @name GUID
-		* @memberOf me.ObjectEntity
-		*/
-		GUID : null,
-
 		/**
 		 * define the type of the object<br>
 		 * default value : none<br>
@@ -5884,9 +6024,6 @@ window.me = window.me || {};
 					this.renderable.setTransparency(settings.transparent_color);
 				}
 			}
-
-			// set the object GUID value
-			this.GUID = me.utils.createGUID();
 
 			// set the object entity name
 			this.name = settings.name?settings.name.toLowerCase():"";
@@ -6086,10 +6223,10 @@ window.me = window.me || {};
 		 * @name updateColRect
 		 * @memberOf me.ObjectEntity
 		 * @function
-		 * @param {int} x x offset (specify -1 to not change the width)
-		 * @param {int} w width of the hit box
-		 * @param {int} y y offset (specify -1 to not change the height)
-		 * @param {int} h height of the hit box
+		 * @param {Number} x x offset (specify -1 to not change the width)
+		 * @param {Number} w width of the hit box
+		 * @param {Number} y y offset (specify -1 to not change the height)
+		 * @param {Number} h height of the hit box
 		 */
 		updateColRect : function(x, w, y, h) {
 			this.collisionBox.adjustSize(x, w, y, h);
@@ -6143,8 +6280,8 @@ window.me = window.me || {};
 		 * @name setVelocity
 		 * @memberOf me.ObjectEntity
 		 * @function
-		 * @param {Int} x velocity on x axis
-		 * @param {Int} y velocity on y axis
+		 * @param {Number} x velocity on x axis
+		 * @param {Number} y velocity on y axis
 		 * @protected
 		 */
 
@@ -6161,8 +6298,8 @@ window.me = window.me || {};
 		 * @name setMaxVelocity
 		 * @memberOf me.ObjectEntity
 		 * @function
-		 * @param {Int} x max velocity on x axis
-		 * @param {Int} y max velocity on y axis
+		 * @param {Number} x max velocity on x axis
+		 * @param {Number} y max velocity on y axis
 		 * @protected
 		 */
 		setMaxVelocity : function(x, y) {
@@ -6175,8 +6312,8 @@ window.me = window.me || {};
 		 * @name setFriction
 		 * @memberOf me.ObjectEntity
 		 * @function
-		 * @param {Int} x horizontal friction
-		 * @param {Int} y vertical friction
+		 * @param {Number} x horizontal friction
+		 * @param {Number} y vertical friction
 		 * @protected
 		 */
 		setFriction : function(x, y) {
@@ -6319,7 +6456,7 @@ window.me = window.me || {};
 		 * @memberOf me.ObjectEntity
 		 * @function
 		 * @param {me.ObjectEntity} entity Entity
-		 * @return {float} distance
+		 * @return {Number} distance
 		 */
 		distanceTo: function(e)
 		{
@@ -6336,7 +6473,7 @@ window.me = window.me || {};
 		 * @memberOf me.ObjectEntity
 		 * @function
 		 * @param {me.Vector2d} vector vector
-		 * @return {float} distance
+		 * @return {Number} distance
 		 */
 		distanceToPoint: function(v)
 		{
@@ -6712,8 +6849,8 @@ window.me = window.me || {};
 	 * @extends me.ObjectEntity
 	 * @memberOf me
 	 * @constructor
-	 * @param {int} x the x coordinates of the sprite object
-	 * @param {int} y the y coordinates of the sprite object
+	 * @param {Number} x the x coordinates of the sprite object
+	 * @param {Number} y the y coordinates of the sprite object
 	 * @param {me.ObjectSettings} settings object settings
 	 */
 	me.CollectableEntity = me.ObjectEntity.extend(
@@ -6739,8 +6876,8 @@ window.me = window.me || {};
 	 * @extends me.ObjectEntity
 	 * @memberOf me
 	 * @constructor
-	 * @param {int} x the x coordinates of the object
-	 * @param {int} y the y coordinates of the object
+	 * @param {Number} x the x coordinates of the object
+	 * @param {Number} y the y coordinates of the object
 	 * @param {me.ObjectSettings} settings object settings
 	 */
 	me.LevelEntity = me.ObjectEntity.extend(
@@ -7535,7 +7672,7 @@ window.me = window.me || {};
 		 * @memberOf me.state
 		 * @public
 		 * @function
-		 * @param {Int} state @see me.state#Constant
+		 * @param {Number} state @see me.state#Constant
 		 * @param {me.ScreenObject}
 		 */
 		obj.set = function(state, so) {
@@ -7565,7 +7702,7 @@ window.me = window.me || {};
 		 * @function
 		 * @param {String} effect (only "fade" is supported for now)
 		 * @param {String} color a CSS color value
-		 * @param {Int} [duration=1000] expressed in milliseconds
+		 * @param {Number} [duration=1000] expressed in milliseconds
 		 */
 		obj.transition = function(effect, color, duration) {
 			if (effect === "fade") {
@@ -7591,7 +7728,7 @@ window.me = window.me || {};
 		 * @memberOf me.state
 		 * @public
 		 * @function
-		 * @param {Int} state @see me.state#Constant
+		 * @param {Number} state @see me.state#Constant
 		 * @param {} [arguments...] extra arguments to be passed to the reset functions
 		 * @example
 		 * // The onResetEvent method on the play screen will receive two args:
@@ -7636,7 +7773,7 @@ window.me = window.me || {};
 		 * @memberOf me.state
 		 * @public
 		 * @function
-		 * @param {Int} state @see me.state#Constant
+		 * @param {Number} state @see me.state#Constant
 		 */
 		obj.isCurrent = function(state) {
 			return _state === state;
@@ -8110,7 +8247,7 @@ window.me = window.me || {};
 		 * @memberOf me.loader
 		 * @public
 		 * @function
-		 * @param {Array.<string>} resources
+		 * @param {Object[]} resources
 		 * @example
 		 * var g_resources = [ 
 		 *   // PNG tileset
@@ -8221,7 +8358,7 @@ window.me = window.me || {};
 		 * @public
 		 * @function
 		 * @param {Object} resource
-		 * @return {boolean} true if unloaded
+		 * @return {Boolean} true if unloaded
 		 * @example me.loader.unload({name: "avatar",  type:"image",  src: "data/avatar.png"});
 		 */
 		obj.unload = function(res) {
@@ -8452,12 +8589,12 @@ window.me = window.me || {};
 	/**
 	 * a generic system font object.
 	 * @class
-	 * @extends Object
+	 * @extends me.Renderable
 	 * @memberOf me
 	 * @constructor
 	 * @param {String} font a CSS font name
 	 * @param {Number|String} size size, or size + suffix (px, em, pt)
-	 * @param {String} color a CSS color value
+	 * @param {String} fillStyle a CSS color value
 	 * @param {String} [textAlign="left"] horizontal alignment
 	 */
     me.Font = me.Renderable.extend(
@@ -8467,8 +8604,33 @@ window.me = window.me || {};
 		/** @ignore */
 		font : null,
         fontSize : null,
-        color : null,
+       
+		/**
+		 * defines the color used to draw the font.<br>
+		 * Default value : "#000000"
+		 * @public
+		 * @type String
+		 * @name me.Font#fillStyle
+		 */
+		fillStyle : "#000000",
+
+		/**
+		 * defines the color used to draw the font stroke.<br>
+		 * Default value : "#000000"
+		 * @public
+		 * @type String
+		 * @name me.Font#strokeStyle
+		 */
+		strokeStyle : "#000000",
         
+		/**
+		 * sets the current line width, in pixels, when drawing stroke
+		 * Default value : 1
+		 * @public
+		 * @type Number
+		 * @name me.Font#lineWidth 
+		 */
+		lineWidth  : 1,
 		
 		/**
 		 * Set the default text alignment (or justification),<br>
@@ -8491,7 +8653,7 @@ window.me = window.me || {};
 		textBaseline : "top",
 		
 		/**
-		 * Set the line height (when displaying multi-line strings). <br>
+		 * Set the line spacing height (when displaying multi-line strings). <br>
 		 * Current font height will be multiplied with this value to set the line height.
 		 * Default value : 1.0
 		 * @public
@@ -8501,12 +8663,12 @@ window.me = window.me || {};
 		lineHeight : 1.0,
         
 		/** @ignore */
-		init : function(font, size, color, textAlign) {
+		init : function(font, size, fillStyle, textAlign) {
             this.pos = new me.Vector2d();
             this.fontSize = new me.Vector2d();
             
 			// font name and type
-			this.set(font, size, color, textAlign);
+			this.set(font, size, fillStyle, textAlign);
 			
             // parent constructor
             this.parent(this.pos, 0, this.fontSize.y);
@@ -8539,27 +8701,29 @@ window.me = window.me || {};
 		 * @function
 		 * @param {String} font a CSS font name
 		 * @param {Number|String} size size, or size + suffix (px, em, pt)
-		 * @param {String} color a CSS color value
+		 * @param {String} fillStyle a CSS color value
 		 * @param {String} [textAlign="left"] horizontal alignment
 		 * @example
 		 * font.set("Arial", 20, "white");
 		 * font.set("Arial", "1.5em", "white");
 		 */
-		set : function(font, size, color, textAlign) {
+		set : function(font, size, fillStyle, textAlign) {
 			// font name and type
-			var font_names = font.split(",");
-			for (var i = 0; i < font_names.length; i++) {
-				font_names[i] = "'" + font_names[i] + "'";
-			}
+			var font_names = font.split(",").map(function (value) {
+				value = value.trim();
+				return (
+					!/(^".*"$)|(^'.*'$)/.test(value)
+				) ? '"' + value + '"' : value;
+			});
 			
             this.fontSize.y = parseInt(size, 10);
 			this.height = this.fontSize.y;
             
             if (typeof size === "number") {
-				size = "" + size + "px";
+				size += "px";
 			}
 			this.font = size + " " + font_names.join(",");
-			this.color = color;
+			this.fillStyle = fillStyle;
 			if (textAlign) {
 				this.textAlign = textAlign;
 			}
@@ -8577,7 +8741,7 @@ window.me = window.me || {};
 		measureText : function(context, text) {
 			// draw the text
 			context.font = this.font;
-			context.fillStyle = this.color;
+			context.fillStyle = this.fillStyle;
 			context.textAlign = this.textAlign;
 			context.textBaseline = this.textBaseline;
             
@@ -8585,7 +8749,7 @@ window.me = window.me || {};
             
 			var strings = (""+text).split("\n");
 			for (var i = 0; i < strings.length; i++) {
-				this.width = Math.max(context.measureText(strings[i].trim()).width, this.width);
+				this.width = Math.max(context.measureText(strings[i].trimRight()).width, this.width);
 				this.height += this.fontSize.y * this.lineHeight;
 			}
 			return {width: this.width, height: this.height};
@@ -8598,8 +8762,8 @@ window.me = window.me || {};
 		 * @function
 		 * @param {Context} context 2D Context
 		 * @param {String} text
-		 * @param {int} x
-		 * @param {int} y
+		 * @param {Number} x
+		 * @param {Number} y
 		 */
 		draw : function(context, text, x, y) {
 			// update initial position
@@ -8607,21 +8771,66 @@ window.me = window.me || {};
             
             // draw the text
 			context.font = this.font;
-			context.fillStyle = this.color;
+			context.fillStyle = this.fillStyle;
 			context.textAlign = this.textAlign;
 			context.textBaseline = this.textBaseline;
 		           
 			var strings = (""+text).split("\n");
 			for (var i = 0; i < strings.length; i++) {
 				// draw the string
-				context.fillText(strings[i].trim(), ~~x, ~~y);
+				context.fillText(strings[i].trimRight(), ~~x, ~~y);
 				// add leading space
 				y += this.fontSize.y * this.lineHeight;
 			}
 			
+		},
+        
+		/**
+		 * draw a stroke text at the specified coord, as defined <br>
+		 * by the `lineWidth` and `fillStroke` properties. <br>
+		 * Note : using drawStroke is not recommended for performance reasons
+		 * @name drawStroke
+		 * @memberOf me.Font
+		 * @function
+		 * @param {Context} context 2D Context
+		 * @param {String} text
+		 * @param {Number} x
+		 * @param {Number} y
+		 */
+		drawStroke : function(context, text, x, y) {
+            // update initial position
+            this.pos.set(x,y);
+            
+            // save the context, as we are modifying
+            // too much parameter in this function
+            context.save();
+            
+            // draw the text
+            context.font = this.font;
+            context.fillStyle = this.fillStyle;
+            context.strokeStyle = this.strokeStyle;
+            context.lineWidth = this.lineWidth;
+            context.textAlign = this.textAlign;
+            context.textBaseline = this.textBaseline;
+		           
+            var strings = (""+text).split("\n");
+            for (var i = 0; i < strings.length; i++) {
+                var _string = strings[i].trimRight();
+                // draw the border
+                context.strokeText(_string, ~~x, ~~y);
+                // draw the string
+                context.fillText(_string, ~~x, ~~y);
+                // add leading space
+                y += this.fontSize.y * this.lineHeight;
+            }
+            
+            // restore the context
+            context.restore();
 		}
+        
 	});
 
+    
 	/**
 	 * a bitpmap font object
 	 * @class
@@ -8629,8 +8838,8 @@ window.me = window.me || {};
 	 * @memberOf me
 	 * @constructor
 	 * @param {String} font
-	 * @param {int/Object} size either an int value, or an object like {x:16,y:16}
-	 * @param {int} [scale="1.0"]
+	 * @param {Number|Object} size either an int value, or an object like {x:16,y:16}
+	 * @param {Number} [scale="1.0"]
 	 * @param {String} [firstChar="0x20"]
 	 */
     me.BitmapFont = me.Font.extend(
@@ -8692,7 +8901,7 @@ window.me = window.me || {};
 		 * @memberOf me.BitmapFont
 		 * @function
 		 * @param {String} textAlign ("left", "center", "right")
-		 * @param {int} [scale]
+		 * @param {Number} [scale]
 		 */
 		set : function(textAlign, scale) {
 			this.textAlign = textAlign;
@@ -8707,7 +8916,7 @@ window.me = window.me || {};
 		 * @name resize
 		 * @memberOf me.BitmapFont
 		 * @function
-		 * @param {int} scale ratio
+		 * @param {Number} scale ratio
 		 */
 		resize : function(scale) {
 			// updated scaled Size
@@ -8733,7 +8942,7 @@ window.me = window.me || {};
             this.height = this.width = 0;
             
 			for (var i = 0; i < strings.length; i++) {
-				this.width = Math.max((strings[i].trim().length * this.sSize.x), this.width);
+				this.width = Math.max((strings[i].trimRight().length * this.sSize.x), this.width);
 				this.height += this.sSize.y * this.lineHeight;
 			}
 			return {width: this.width, height: this.height};
@@ -8746,8 +8955,8 @@ window.me = window.me || {};
 		 * @function
 		 * @param {Context} context 2D Context
 		 * @param {String} text
-		 * @param {int} x
-		 * @param {int} y
+		 * @param {Number} x
+		 * @param {Number} y
 		 */
 		draw : function(context, text, x, y) {
 			var strings = (""+text).split("\n");
@@ -8757,7 +8966,7 @@ window.me = window.me || {};
             this.pos.set(x,y);
             for (var i = 0; i < strings.length; i++) {
 				x = lX;
-				var string = strings[i].trim();
+				var string = strings[i].trimRight();
 				// adjust x pos based on alignment value
 				var width = string.length * this.sSize.x;
 				switch(this.textAlign) {
@@ -9142,7 +9351,7 @@ window.me = window.me || {};
 		 * @memberOf me.audio
 		 * @public
 		 * @function
-		 * @return {boolean}
+		 * @return {Boolean}
 		 */
 		obj.isAudioEnable = function() {
 			return sound_enable;
@@ -9474,7 +9683,7 @@ window.me = window.me || {};
 		 * @public
 		 * @function
 		 * @param {String} sound_id audio track id
-		 * @return {boolean} true if unloaded
+		 * @return {Boolean} true if unloaded
 		 * @example
 		 * me.audio.unload("awesome_music");
 		 */
@@ -9585,8 +9794,8 @@ window.me = window.me || {};
 		 * @memberOf me.video
 		 * @function
 		 * @param {String} wrapper the "div" element id to hold the canvas in the HTML file  (if null document.body will be used)
-		 * @param {Int} width game width
-		 * @param {Int} height game height
+		 * @param {Number} width game width
+		 * @param {Number} height game height
 		 * @param {Boolean} [double_buffering] enable/disable double buffering
 		 * @param {Number} [scale] enable scaling of the canvas ('auto' for automatic scaling)
 		 * @param {Boolean} [maintainAspectRatio] maintainAspectRatio when scaling the display
@@ -9622,7 +9831,7 @@ window.me = window.me || {};
 			game_height_zoom = game_height * me.sys.scale.y;
 			
 			//add a channel for the onresize/onorientationchange event
-			window.addEventListener('resize', function (event) {me.event.publish(me.event.WINDOW_ONRESIZE, [event]);}, false);
+			window.addEventListener('resize', throttle(100, false, function (event) {me.event.publish(me.event.WINDOW_ONRESIZE, [event]);}), false);
 			window.addEventListener('orientationchange', function (event) {me.event.publish(me.event.WINDOW_ONORIENTATION_CHANGE, [event]);}, false);
 			
 			// register to the channel
@@ -9695,7 +9904,7 @@ window.me = window.me || {};
 		 * @name getWidth
 		 * @memberOf me.video
 		 * @function
-		 * @return {Int}
+		 * @return {Number}
 		 */
 		api.getWidth = function() {
 			return backBufferCanvas.width;
@@ -9720,7 +9929,7 @@ window.me = window.me || {};
 		 * @name getHeight
 		 * @memberOf me.video
 		 * @function
-		 * @return {Int}
+		 * @return {Number}
 		 */
 		api.getHeight = function() {
 			return backBufferCanvas.height;
@@ -9731,8 +9940,8 @@ window.me = window.me || {};
 		 * @name setMaxSize
 		 * @memberOf me.video
 		 * @function
-		 * @param {Int} width width
-		 * @param {Int} height height
+		 * @param {Number} width width
+		 * @param {Number} height height
 		 */
 		api.setMaxSize = function(w, h) {
 			// max display size
@@ -9746,8 +9955,8 @@ window.me = window.me || {};
 		 * @name createCanvas
 		 * @memberOf me.video
 		 * @function
-		 * @param {Int} width width
-		 * @param {Int} height height
+		 * @param {Number} width width
+		 * @param {Number} height height
 		 * @return {Canvas}
 		 */
 		api.createCanvas = function(width, height, vendorExt) {
@@ -9771,7 +9980,7 @@ window.me = window.me || {};
 		 * @memberOf me.video
 		 * @function
 		 * @param {Canvas}
-		 * @return {Context2D}
+		 * @return {Context2d}
 		 */
 		api.getContext2d = function(canvas) {
 			var _context;
@@ -9809,7 +10018,7 @@ window.me = window.me || {};
 		 * @name getScreenContext
 		 * @memberOf me.video
 		 * @function
-		 * @return {Context2D}
+		 * @return {Context2d}
 		 */
 		api.getScreenContext = function() {
 			return context2D;
@@ -9831,7 +10040,7 @@ window.me = window.me || {};
 		 * @name getSystemContext
 		 * @memberOf me.video
 		 * @function
-		 * @return {Context2D}
+		 * @return {Context2d}
 		 */
 		api.getSystemContext = function() {
 			return backBufferContext2D;
@@ -9931,7 +10140,7 @@ window.me = window.me || {};
 		 * @name clearSurface
 		 * @memberOf me.video
 		 * @function
-		 * @param {Context2D} context Canvas context
+		 * @param {Context2d} context Canvas context
 		 * @param {String} color a CSS color string
 		 */
 		api.clearSurface = function(context, col) {
@@ -9954,7 +10163,7 @@ window.me = window.me || {};
 		 * @name setImageSmoothing
 		 * @memberOf me.video
 		 * @function
-		 * @param {Context2D} context
+		 * @param {Context2d} context
 		 * @param {Boolean} [enable=false]
 		 */
 		api.setImageSmoothing = function(context, enable) {
@@ -9974,7 +10183,7 @@ window.me = window.me || {};
 		 * @name setAlpha
 		 * @memberOf me.video
 		 * @function
-		 * @param {Context2D} context
+		 * @param {Context2d} context
 		 * @param {Boolean} enable
 		 */
 		api.setAlpha = function(context, enable) {
@@ -10017,7 +10226,7 @@ window.me = window.me || {};
 		 * @param {Object} object Canvas or Image Object on which to apply the filter
 		 * @param {String} effect "b&w", "brightness", "transparent"
 		 * @param {String} option For "brightness" effect : level [0...1] <br> For "transparent" effect : color to be replaced in "#RRGGBB" format
-		 * @return {Context2D} context object
+		 * @return {Context2d} context object
 		 */
 		api.applyRGBFilter = function(object, effect, option) {
 			//create a output canvas using the given canvas or image size
@@ -10173,7 +10382,10 @@ window.me = window.me || {};
 		var keyLock = {};
 		// actual lock status of each key
 		var keyLocked = {};
-		
+
+		// List of binded keys being held
+		var keyRefs = {};
+
 		// list of registered Event handlers
 		var evtHandlers = {};
 
@@ -10192,8 +10404,16 @@ window.me = window.me || {};
 		var mouseEventList =   ['mousewheel', 'mousemove', 'mousedown', 'mouseup', undefined, 'click', 'dblclick'];
 		var touchEventList =   [undefined, 'touchmove', 'touchstart', 'touchend', 'touchcancel', 'tap', 'dbltap'];
 		// (a polyfill will probably be required at some stage, once this will be fully standardized
-		var pointerEventList = ['mousewheel', 'PointerMove', 'PointerDown', 'PointerUp', 'PointerCancel', undefined, undefined ];
+		var pointerEventList = ['mousewheel', 'pointermove', 'pointerdown', 'pointerup', 'pointercancel', undefined, undefined ];
+		var MSPointerEventList = ['mousewheel', 'MSPointerMove', 'MSPointerDown', 'MSPointerUp', 'MSPointerCancel', undefined, undefined ];
 		
+		// internal constants
+		var MOUSE_WHEEL = 0;
+		var POINTER_MOVE = 1;
+		var POINTER_DOWN = 2;
+		var POINTER_UP = 3;
+		var POINTER_CANCEL = 4;
+
 		/**
 		 * enable keyboard event
 		 * @ignore
@@ -10238,37 +10458,28 @@ window.me = window.me || {};
 						me.event.publish(me.event.WINDOW_ONSCROLL, [ e ]);
 					}
 				), false);
-				
-			    // MSPointer can hold Mouse & Touch events
-				if (window.navigator.pointerEnabled) {
+
+				// check standard
+				if(window.navigator.pointerEnabled) {
 					activeEventList = pointerEventList;
-					// check for backward compatibility with the 'MS' prefix
-					var useMSPrefix = window.navigator.msPointerEnabled;
-					for(var x = 1; x < activeEventList.length; ++x) {
-						if (activeEventList[x] && !activeEventList[x].contains('MS')) {
-							activeEventList[x] = useMSPrefix ? 'MS' + activeEventList[x] : activeEventList[x].toLowerCase();
-						}
-						// register mouse wheel event
-						window.addEventListener(activeEventList[0], onMouseWheel, false);
-					}
-					// register PointerEvents
-					registerEventListener(activeEventList, onPointerEvent);
-				} else {
-                    // Regular `touch****` events for iOS/Android devices
-				    if (me.device.touch) {
-						activeEventList = touchEventList;
-						registerEventListener(activeEventList, onPointerEvent);
-				    } else {
-						// Regular Mouse events
-				        activeEventList = mouseEventList;
-						registerEventListener(activeEventList, onPointerEvent);
-						
-						// detect wheel event support
-						// Modern browsers support "wheel", Webkit and IE support at least "mousewheel  
-						wheeltype = "onwheel" in document.createElement("div") ? "wheel" : "mousewheel";
-						window.addEventListener(wheeltype, onMouseWheel, false);						
-				    }
 				}
+				else if(window.navigator.msPointerEnabled) { // check for backward compatibility with the 'MS' prefix
+					activeEventList = MSPointerEventList;
+				}
+				else if (me.device.touch) { //  `touch****` events for iOS/Android devices
+					activeEventList = touchEventList;
+				}
+				else { // Regular Mouse events
+					activeEventList = mouseEventList;
+				}
+
+				registerEventListener(activeEventList, onPointerEvent);
+
+				// detect wheel event support
+				// Modern browsers support "wheel", Webkit and IE support at least "mousewheel
+				wheeltype = "onwheel" in document.createElement("div") ? "wheel" : "mousewheel";
+				window.addEventListener(wheeltype, onMouseWheel, false);
+
 				// set the PointerMove/touchMove/MouseMove event
 				if (obj.throttlingInterval === undefined) {
 					// set the default value
@@ -10276,10 +10487,10 @@ window.me = window.me || {};
 				}
 				// if time interval <= 16, disable the feature
 				if (obj.throttlingInterval < 17) {
-					me.video.getScreenCanvas().addEventListener(activeEventList[1], onMoveEvent, false);
+					me.video.getScreenCanvas().addEventListener(activeEventList[POINTER_MOVE], onMoveEvent, false);
 				}
 				else {
-					me.video.getScreenCanvas().addEventListener(activeEventList[1], throttle(obj.throttlingInterval, false, function(e){onMoveEvent(e);}), false);
+					me.video.getScreenCanvas().addEventListener(activeEventList[POINTER_MOVE], throttle(obj.throttlingInterval, false, function(e){onMoveEvent(e);}), false);
 				}
 				pointerInitialized = true;
 			}
@@ -10313,18 +10524,25 @@ window.me = window.me || {};
 		 * key down event
 		 * @ignore
 		 */
-		function keydown(e, keyCode) {
+		function keydown(e, keyCode, mouseButton) {
 
-			var action = KeyBinding[keyCode || e.keyCode || e.which];
+            keyCode = keyCode || e.keyCode || e.which;
+            var action = KeyBinding[keyCode];
+
+            // publish a message for keydown event
+            me.event.publish(me.event.KEYDOWN, [
+                action,
+                keyCode,
+                action ? !keyLocked[action] : true
+            ]);
 
 			if (action) {
 				if (!keyLocked[action]) {
-					keyStatus[action] = true;
-					// lock the key if requested
-					keyLocked[action] = keyLock[action];
-
-					// publish a message for keydown event
-					me.event.publish(me.event.KEYDOWN, [ action ]);
+					var trigger = mouseButton ? mouseButton : keyCode;
+					if (!keyRefs[action][trigger]) {
+						keyStatus[action]++;
+						keyRefs[action][trigger] = true;
+					}
 				}
 				// prevent event propagation
 				return preventDefault(e);
@@ -10338,17 +10556,20 @@ window.me = window.me || {};
 		 * key up event
 		 * @ignore
 		 */
-		function keyup(e, keyCode) {
+		function keyup(e, keyCode, mouseButton) {
 
-			var action = KeyBinding[keyCode || e.keyCode || e.which];
+            keyCode = keyCode || e.keyCode || e.which;
+            var action = KeyBinding[keyCode];
+
+            // publish a message for keydown event
+            me.event.publish(me.event.KEYUP, [ action, keyCode ]);
 
 			if (action) {
-
-				keyStatus[action] = false;
+				var trigger = mouseButton ? mouseButton : keyCode;
+				keyRefs[action][trigger] = undefined;
+				if (keyStatus[action] > 0)
+					keyStatus[action]--;
 				keyLocked[action] = false;
-
-				// publish message for keyup event
-				me.event.publish(me.event.KEYUP, [ action ]);
 
 				// prevent the event propagation
 				return preventDefault(e);
@@ -10365,13 +10586,10 @@ window.me = window.me || {};
 			var handled = false;
 			var handlers = evtHandlers[e.type];
 
-			// Convert touchcancel -> touchend, and PointerCancel -> PointerEnd
+			// Convert touchcancel -> touchend, and pointercancel -> pointerup
 			if (!handlers) {
-				if (e.type === "touchcancel") {
-					handlers = evtHandlers["touchend"];
-				}
-				else if (e.type === "PointerCancel") {
-					handlers = evtHandlers["PointerUp"];
+				if (activeEventList.indexOf(e.type) === POINTER_CANCEL) {
+					handlers = evtHandlers[activeEventList[POINTER_UP]];
 				} else {
 					handlers = evtHandlers[e.type];
 				}
@@ -10388,7 +10606,7 @@ window.me = window.me || {};
 					}
 
 					// if PointerEvent is not supported 
-					if (!navigator.pointerEnabled) {	
+					if (!me.device.pointerEnabled) {	
 						// -> define pointerId to simulate the PointerEvent standard
 						e.pointerId = obj.changedTouches[t].id;
 					}
@@ -10517,14 +10735,15 @@ window.me = window.me || {};
 			}
 
 			// in case of touch event button is undefined
-			var keycode = obj.mouse.bind[e.button || 0];
+			var button = e.button || 0;
+			var keycode = obj.mouse.bind[button];
 
 			// check if mapped to a key
 			if (keycode) {
-				if (e.type === activeEventList[2])
-					return keydown(e, keycode);
+				if (e.type === activeEventList[POINTER_DOWN])
+					return keydown(e, keycode, button + 1);
 				else // 'mouseup' or 'touchend'
-					return keyup(e, keycode);
+					return keyup(e, keycode, button + 1);
 			}
 
 			return true;
@@ -10655,7 +10874,7 @@ window.me = window.me || {};
 		 * @public
 		 * @function
 		 * @param {String} action user defined corresponding action
-		 * @return {boolean} true if pressed
+		 * @return {Boolean} true if pressed
 		 * @example
 		 * if (me.input.isKeyPressed('left'))
 		 * {
@@ -10669,11 +10888,9 @@ window.me = window.me || {};
 		 */
 
 		obj.isKeyPressed = function(action) {
-			if (keyStatus[action]) {
+			if (keyStatus[action] && !keyLocked[action]) {
 				if (keyLock[action]) {
 					keyLocked[action] = true;
-					// "eat" the event
-					keyStatus[action] = false;
 				}
 				return true;
 			}
@@ -10687,11 +10904,11 @@ window.me = window.me || {};
 		 * @public
 		 * @function
 		 * @param {String} action user defined corresponding action
-		 * @return {boolean} down (true) or up(false)
+		 * @return {Boolean} down (true) or up(false)
 		 */
 
 		obj.keyStatus = function(action) {
-			return (keyLocked[action] === true) ? true : keyStatus[action];
+			return (keyStatus[action] > 0);
 		};
 
 		
@@ -10702,7 +10919,7 @@ window.me = window.me || {};
 		 * @public
 		 * @function
 		 * @param {me.input#KEY} keycode
-		 * @param {boolean} true to trigger a key press, or false for key release
+		 * @param {Boolean} true to trigger a key press, or false for key release
 		 * @example
 		 * // trigger a key press
 		 * me.input.triggerKeyEvent(me.input.KEY.LEFT, true);
@@ -10726,7 +10943,7 @@ window.me = window.me || {};
 		 * @function
 		 * @param {me.input#KEY} keycode
 		 * @param {String} action user defined corresponding action
-		 * @param {boolean} lock cancel the keypress event once read
+		 * @param {Boolean} lock cancel the keypress event once read
 		 * @example
 		 * // enable the keyboard
 		 * me.input.bindKey(me.input.KEY.LEFT,  "left");
@@ -10739,9 +10956,10 @@ window.me = window.me || {};
 
 			KeyBinding[keycode] = action;
 
-			keyStatus[action] = false;
+			keyStatus[action] = 0;
 			keyLock[action] = lock ? lock : false;
 			keyLocked[action] = false;
+			keyRefs[action] = {};
 		};
 		
 		/**
@@ -10773,8 +10991,9 @@ window.me = window.me || {};
 		 */
 		obj.unbindKey = function(keycode) {
 			// clear the event status
-			keyStatus[KeyBinding[keycode]] = false;
+			keyStatus[KeyBinding[keycode]] = 0;
 			keyLock[KeyBinding[keycode]] = false;
+			keyRefs[KeyBinding[keycode]] = {};
 			// remove the key binding
 			KeyBinding[keycode] = null;
 		};
@@ -10818,7 +11037,7 @@ window.me = window.me || {};
 		 * @memberOf me.input
 		 * @public
 		 * @function
-		 * @param {Integer} button (accordingly to W3C values : 0,1,2 for left, middle and right buttons)
+		 * @param {Number} button (accordingly to W3C values : 0,1,2 for left, middle and right buttons)
 		 * @param {me.input#KEY} keyCode
 		 * @example
 		 * // enable the keyboard
@@ -10843,7 +11062,7 @@ window.me = window.me || {};
 		 * @memberOf me.input
 		 * @public
 		 * @function
-		 * @param {Integer} button (accordingly to W3C values : 0,1,2 for left, middle and right buttons)
+		 * @param {Number} button (accordingly to W3C values : 0,1,2 for left, middle and right buttons)
 		 * @example
 		 * me.input.unbindMouse(me.input.mouse.LEFT);
 		 */
@@ -10912,7 +11131,7 @@ window.me = window.me || {};
 		    enablePointerEvent();
 
 		    // convert mouse events to iOS/PointerEvent equivalent
-		    if ((mouseEventList.indexOf(eventType) !== -1) && (me.device.touch || window.navigator.pointerEnabled)) {
+		    if ((mouseEventList.indexOf(eventType) !== -1) && (me.device.touch || me.device.pointerEnabled)) {
 		        eventType = activeEventList[mouseEventList.indexOf(eventType)];
 		    }
 			// >>>TODO<<< change iOS touch event to their PointerEvent equivalent & vice-versa
@@ -10952,7 +11171,7 @@ window.me = window.me || {};
 		 */
 		obj.releasePointerEvent = function(eventType, rect) {
 			// convert mouse events to iOS/MSPointer equivalent
-		    if ((mouseEventList.indexOf(eventType) !== -1) && (me.device.touch || window.navigator.pointerEnabled)) {
+		    if ((mouseEventList.indexOf(eventType) !== -1) && (me.device.touch || me.device.pointerEnabled)) {
 		        eventType = activeEventList[mouseEventList.indexOf(eventType)];
 		    }
 			// >>>TODO<<< change iOS touch event to their PointerEvent equivalent & vice-versa
@@ -11108,8 +11327,8 @@ window.me = window.me || {};
 		 * @memberOf me.utils
 		 * @name decodeBase64AsArray
 		 * @param {String} input Base64 encoded data
-		 * @param {Int} [bytes] number of bytes per array entry
-		 * @return {Int[]} Array of bytes
+		 * @param {Number} [bytes] number of bytes per array entry
+		 * @return {Number[]} Array of bytes
 		 */
 		api.decodeBase64AsArray = function(input, bytes) {
 			bytes = bytes || 1;
@@ -11139,9 +11358,9 @@ window.me = window.me || {};
 		 * @function
 		 * @memberOf me.utils
 		 * @name decompress
-		 * @param  {Int[]} data Array of bytes
+		 * @param  {Number[]} data Array of bytes
 		 * @param  {String} format compressed data format ("gzip","zlib")
-		 * @return {Int[]} Array of bytes
+		 * @return {Number[]} Array of bytes
 		 */
 		api.decompress = function(data, format) {
 			throw "melonJS: GZIP/ZLIB compressed TMX Tile Map not supported!";
@@ -11154,8 +11373,8 @@ window.me = window.me || {};
 		 * @memberOf me.utils
 		 * @name decodeCSV
 		 * @param  {String} input CSV formatted data
-		 * @param  {Int} limit row split limit
-		 * @return {Int[]} Int Array
+		 * @param  {Number} limit row split limit
+		 * @return {Number[]} Int Array
 		 */
 		api.decodeCSV = function(input, limit) {
 			input = input.trim().split("\n");
@@ -11322,7 +11541,7 @@ window.me = window.me || {};
 (function(window) {
     
     /** 
-     * A singleton object to access the device local Storage area
+     * A singleton object to access the device localStorage area
      * @example
      * // Initialize "score" and "lives" with default values
      * me.save.add({ score : 0, lives : 3 });
@@ -11335,11 +11554,13 @@ window.me = window.me || {};
      *
      * // Also supports complex objects thanks to JSON backend
      * me.save.complexObject = { a : "b", c : [ 1, 2, 3, "d" ], e : { f : [{}] } };
+     * // DO NOT set any child properties of me.save.complexObject directly!
+     * // Changes made that way will not save. Always set the entire object value at once.
      *
      * // Print all
      * console.log(JSON.stringify(me.save));
      *
-     * // detele "score" from local Storage
+     * // Delete "score" from localStorage
      * me.save.delete('score');
      * @namespace me.save
      * @memberOf me
@@ -11371,7 +11592,7 @@ window.me = window.me || {};
             },
 
             /**
-             * add new keys to localStorage and set them to the given default values 
+             * Add new keys to localStorage and set them to the given default values if they do not exist
              * @name add
              * @memberOf me.save
              * @function
@@ -11386,17 +11607,15 @@ window.me = window.me || {};
 
                     (function (prop) {
                         Object.defineProperty(api, prop, {
+                            configurable : true,
                             enumerable : true,
                             get : function () {
                                 return data[prop];
                             },
                             set : function (value) {
-                                // don't overwrite if it was already defined
-                                if (typeof data[prop] !== 'object') {
-                                    data[prop] = value;
-                                    if (me.device.localStorage === true) {
-                                        localStorage.setItem("me.save." + prop, JSON.stringify(data[prop]));
-                                    }
+                                data[prop] = value;
+                                if (me.device.localStorage === true) {
+                                    localStorage.setItem("me.save." + prop, JSON.stringify(value));
                                 }
                             }
                         });
@@ -11407,16 +11626,21 @@ window.me = window.me || {};
                         api[key] = props[key];
                     }
                 });
+
+                // Save keys
+                if (me.device.localStorage === true) {
+                    localStorage.setItem("me.save", JSON.stringify(Object.keys(data)));
+                }
             },
 
             /**
-             * remove a key from localStorage 
+             * Remove a key from localStorage
              * @name delete
              * @memberOf me.save
              * @function
              * @param {String} key key to be removed
              * @example
-             * // remove the "hiscore" key from localStorage
+             * // Remove the "score" key from localStorage
              * me.save.delete("score");
              */
             delete : function (key) {
@@ -11425,6 +11649,7 @@ window.me = window.me || {};
                         delete data[key];
                         if (me.device.localStorage === true) {
                             localStorage.removeItem("me.save." + key);
+                            localStorage.setItem("me.save", JSON.stringify(Object.keys(data)));
                         }
                     }
                 }
@@ -12064,11 +12289,11 @@ window.me = window.me || {};
 	 * @extends me.Rect
 	 * @memberOf me
 	 * @constructor
-	 * @param {int} x x index of the Tile in the map
-	 * @param {int} y y index of the Tile in the map
-	 * @param {int} w Tile width
-	 * @param {int} h Tile height
-	 * @param {int} tileId tileId
+	 * @param {Number} x x index of the Tile in the map
+	 * @param {Number} y y index of the Tile in the map
+	 * @param {Number} w Tile width
+	 * @param {Number} h Tile height
+	 * @param {Number} tileId tileId
 	 */
 	me.Tile = me.Rect.extend({
 		/**
@@ -12328,8 +12553,8 @@ window.me = window.me || {};
 		 * @name me.TMXTileset#contains
 		 * @public
 		 * @function
-		 * @param {Integer} gid 
-		 * @return {boolean}
+		 * @param {Number} gid
+		 * @return {Boolean}
 		 */
 		contains : function(gid) {
 			return gid >= this.firstgid && gid <= this.lastgid;
@@ -12360,7 +12585,7 @@ window.me = window.me || {};
 		 * @name me.TMXTileset#getTileProperties
 		 * @public
 		 * @function
-		 * @param {Integer} tileId 
+		 * @param {Number} tileId
 		 * @return {Object}
 		 */
 		getTileProperties: function(tileId) {
@@ -12490,7 +12715,7 @@ window.me = window.me || {};
 		 * @name me.TMXTilesetGroup#getTilesetByGid
 		 * @public
 		 * @function
-		 * @param {Integer} gid 
+		 * @param {Number} gid
 		 * @return {me.TMXTileset} corresponding tileset
 		 */
 		getTilesetByGid : function(gid) {
@@ -12826,7 +13051,7 @@ window.me = window.me || {};
 	 * @constructor
 	 * @param {String}  name    layer name
 	 * @param {String}  color   a CSS color value
-	 * @param {int}     z       z position
+	 * @param {Number}  z       z position
 	 */
 	 me.ColorLayer = me.Renderable.extend({
 		// constructor
@@ -12885,10 +13110,10 @@ window.me = window.me || {};
 	 * @memberOf me
 	 * @constructor
 	 * @param {String} name        layer name
-	 * @param {int}    width       layer width in pixels 
-	 * @param {int}    height      layer height in pixels
+	 * @param {Number} width       layer width in pixels
+	 * @param {Number} height      layer height in pixels
 	 * @param {String} image       image name (as defined in the asset list)
-	 * @param {int}    z           z position
+	 * @param {Number} z           z position
 	 * @param {me.Vector2d}  [ratio=1.0]   scrolling ratio to be applied
 	 */
 	 me.ImageLayer = me.Renderable.extend({
@@ -13066,9 +13291,10 @@ window.me = window.me || {};
 			
 			// translate default position using the anchorPoint value
 			if (this.anchorPoint.y !==0 || this.anchorPoint.x !==0) {
+				var viewport = me.game.viewport;
 				context.translate (
-					~~(this.anchorPoint.x * (this.viewport.width - this.imagewidth)),
-					~~(this.anchorPoint.y * (this.viewport.height - this.imageheight))
+					~~(this.anchorPoint.x * (viewport.width - this.imagewidth)),
+					~~(this.anchorPoint.y * (viewport.height - this.imageheight))
 				);
 			}
 			
@@ -13369,9 +13595,9 @@ window.me = window.me || {};
 		 * @memberOf me.TMXLayer
 		 * @public
 		 * @function
-		 * @param {Integer} x x coordinate in pixel 
-		 * @param {Integer} y y coordinate in pixel
-		 * @return {Int} TileId
+		 * @param {Number} x x coordinate in pixel
+		 * @param {Number} y y coordinate in pixel
+		 * @return {Number} TileId
 		 */
 		getTileId : function(x, y) {
 			var tile = this.getTile(x,y);
@@ -13384,8 +13610,8 @@ window.me = window.me || {};
 		 * @memberOf me.TMXLayer
 		 * @public
 		 * @function
-		 * @param {Integer} x x coordinate in pixel 
-		 * @param {Integer} y y coordinate in pixel
+		 * @param {Number} x x coordinate in pixel
+		 * @param {Number} y y coordinate in pixel
 		 * @return {me.Tile} Tile Object
 		 */
 		getTile : function(x, y) {
@@ -13398,9 +13624,9 @@ window.me = window.me || {};
 		 * @memberOf me.TMXLayer
 		 * @public
 		 * @function
-		 * @param {Integer} x x coordinate in tile 
-		 * @param {Integer} y y coordinate in tile
-		 * @param {Integer} tileId tileId
+		 * @param {Number} x x coordinate in tile
+		 * @param {Number} y y coordinate in tile
+		 * @param {Number} tileId tileId
 		 * @return {me.Tile} the corresponding newly created tile object
 		 */
 		setTile : function(x, y, tileId) {
@@ -13420,8 +13646,8 @@ window.me = window.me || {};
 		 * @memberOf me.TMXLayer
 		 * @public
 		 * @function
-		 * @param {Integer} x x position 
-		 * @param {Integer} y y position 
+		 * @param {Number} x x position
+		 * @param {Number} y y position
 		 */
 		clearTile : function(x, y) {
 			// clearing tile
@@ -13741,8 +13967,8 @@ window.me = window.me || {};
 		 * @name me.TMXTileMap#clearTile
 		 * @public
 		 * @function
-		 * @param {Integer} x x position 
-		 * @param {Integer} y y position 
+		 * @param {Number} x x position
+		 * @param {Number} y y position
 		 */
 		clearTile : function(x, y) {
 			// add all layers
@@ -14608,11 +14834,6 @@ window.me = window.me || {};
 		var _onUpdateCallback = null;
 		var _onCompleteCallback = null;
 		
-		/**
-		 * Always update the tween (it's never in viewport)
-		 * @ignore
-		 */
-		this.alwaysUpdate = true;
 
 		// Set all starting values present on the target object
 		for ( var field in object ) {
@@ -14621,14 +14842,34 @@ window.me = window.me || {};
 
 		}
 
+		/**
+		 * reset the tween object to default value
+		 * @ignore 
+		 */
+		this.onResetEvent = function ( object ) {
+			_object = object;
+			_valuesStart = {};
+			_valuesEnd = {};
+			_valuesStartRepeat = {};
+			_easingFunction = me.Tween.Easing.Linear.None;
+			_interpolationFunction = me.Tween.Interpolation.Linear;
+			_yoyo = false;
+			_reversed = false;
+			_duration = 1000;
+			_delayTime = 0;
+			_onStartCallback = null;
+			_onStartCallbackFired = false;
+			_onUpdateCallback = null;
+			_onCompleteCallback = null;
+		};
 		
 		/**
 		 * object properties to be updated and duration
 		 * @name me.Tween#to
 		 * @public
 		 * @function
-		 * @param {Properties} prop list of properties
-		 * @param {int} [duration=1000] tween duration
+		 * @param {Object} properties hash of properties
+		 * @param {Number} [duration=1000] tween duration
 		 */
 		this.to = function ( properties, duration ) {
 
@@ -14655,7 +14896,7 @@ window.me = window.me || {};
 			_onStartCallbackFired = false;
 
 			// add the tween to the object pool on start
-			me.game.add(this, 999);
+			me.game.world.addChild(this);
 
 			_startTime = me.timer.getTime() + _delayTime;
 			_pauseTime = 0;
@@ -14698,7 +14939,7 @@ window.me = window.me || {};
 		 */
 		this.stop = function () {
 
-			me.game.remove(this, true);
+			me.game.world.removeChild(this);
 			return this;
 
 		};
@@ -14708,7 +14949,7 @@ window.me = window.me || {};
 		 * @name me.Tween#delay
 		 * @public
 		 * @function
-		 * @param {int} amount delay amount expressed in milliseconds
+		 * @param {Number} amount delay amount expressed in milliseconds
 		 */
 		this.delay = function ( amount ) {
 
@@ -14742,7 +14983,7 @@ window.me = window.me || {};
 		 * @name me.Tween#repeat
 		 * @public
 		 * @function
-		 * @param {int} times amount of times the tween should be repeated
+		 * @param {Number} times amount of times the tween should be repeated
 		 */
 		this.repeat = function ( times ) {
 
@@ -14944,7 +15185,7 @@ window.me = window.me || {};
 				} else {
 				
 					// remove the tween from the object pool
-					me.game.remove(this, true);
+					me.game.world.removeChild(this);
 
 					if ( _onCompleteCallback !== null ) {
 
@@ -15502,21 +15743,52 @@ window.me = window.me || {};
 
 		/**
 		 * Channel Constant for pressing a binded key <br>
-		 * Data passed : {String} user-defined action <br>
+         * Data passed : {String} user-defined action, {Number} keyCode,
+         * {Boolean} edge state <br>
+         * Edge-state is for detecting "locked" key bindings. When a locked key
+         * is pressed and held, the first event will have have the third
+         * argument set true. subsequent events will continue firing with the
+         * third argument set false.
 		 * @public
 		 * @constant
 		 * @type String
 		 * @name me.event#KEYDOWN
+         * @example
+         * me.input.bindKey("jump", me.input.KEY.X, true); // Edge-triggered
+         * me.input.bindKey("shoot", me.input.KEY.Z); // Level-triggered
+         * me.event.subscribe(me.event.KEYDOWN, function (action, keyCode, edge)) {
+         *     // Checking bound keys
+         *     if (action === "jump") {
+         *         if (edge) {
+         *             this.doJump();
+         *         }
+         *
+         *         // Make character fall slower when holding the jump key
+         *         this.vel.y = this.gravity;
+         *     }
+         * });
 		 */
 		obj.KEYDOWN = "me.input.keydown";
 
 		/**
 		 * Channel Constant for releasing a binded key <br>
-		 * Data passed : {Number} user-defined action <br>
+         * Data passed : {String} user-defined action, {Number} keyCode <br>
 		 * @public
 		 * @constant
 		 * @type String
 		 * @name me.event#KEYUP
+         * @example
+         * me.event.subscribe(me.event.KEYUP, function (action, keyCode)) {
+         *     // Checking unbound keys
+         *     if (keyCode == me.input.KEY.ESC) {
+         *         if (me.state.isPaused()) {
+         *             me.state.resume();
+         *         }
+         *         else {
+         *             me.state.pause();
+         *         }
+         *     }
+         * });
 		 */
 		obj.KEYUP = "me.input.keyup";
 
@@ -15613,12 +15885,18 @@ window.me = window.me || {};
 		 * @name me.event#unsubscribe
 		 * @public
 		 * @function
-		 * @param {handle} handle The return value from a subscribe call or the
+		 * @param {Array|String} handle The return value from a subscribe call or the
 		 * name of a channel as a String
-		 * @param {Function} [callback] The return value from a subscribe call.
+		 * @param {Function} [callback] The callback to be unsubscribed.
 		 * @example
-		 * var handle = me.subscribe("/some/channel", function(){});
+		 * var handle = me.event.subscribe("/some/channel", function(){});
 		 * me.event.unsubscribe(handle);
+		 *
+		 * // Or alternatively ...
+		 *
+		 * var callback = function(){};
+		 * me.event.subscribe("/some/channel", callback);
+		 * me.event.unsubscribe("/some/channel", callback);
 		 */
 		obj.unsubscribe = function(handle, callback){
 			var subs = cache[callback ? handle : handle[0]],
@@ -15698,9 +15976,9 @@ window.me = window.me || {};
 		 * @memberOf me.plugin
 		 * @public
 		 * @function
-		 * @param {Object} object target object
-		 * @param {name} name target function
-		 * @param {Function} fn function
+		 * @param {Object} proto target object
+		 * @param {String} name target function
+		 * @param {Function} fn replacement function
 		 * @example 
 		 * // redefine the me.game.update function with a new one
 		 * me.plugin.patch(me.game, "update", function () { 

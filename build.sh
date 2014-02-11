@@ -67,7 +67,7 @@ cp js/ $BUILD -R
 # [ -e $BUILD/js/config.js ] && rm $BUILD/js/config.js
 cp vendor/ $BUILD -R
 [ -e $BUILD/vendor/howler.js ] && rm $BUILD/vendor/howler.js
-[ -e $BUILD/vendor/melonJS-0.9.10.js ] && rm $BUILD/vendor/melonJS-0.9.10.js
+[ -e $BUILD/vendor/melonJS-0.9.11.js ] && rm $BUILD/vendor/melonJS-0.9.11.js
 cp index.html index.php .htaccess LICENSE manifest.webapp favicon.ico $BUILD
 
 ### Obfuscate javascript
